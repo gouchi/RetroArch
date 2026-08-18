@@ -38,6 +38,8 @@ typedef struct _sdl_joypad
    SDL_GameController *controller;
    SDL_Haptic *haptic;
    int rumble_effect; /* -1 = not initialized, -2 = error/unsupported, -3 = use SDL_JoystickRumble instead of haptic */
+   uint16_t rumble_strong;
+   uint16_t rumble_weak;
 #endif
    unsigned num_axes;
    unsigned num_buttons;
@@ -219,6 +221,8 @@ static void sdl_pad_connect(unsigned id)
    }
 
    pad->rumble_effect = -1;
+   pad->rumble_strong = 0;
+   pad->rumble_weak   = 0;
 
    if (pad->haptic)
    {
@@ -529,27 +533,35 @@ static bool sdl_joypad_set_rumble(unsigned pad, enum retro_rumble_effect effect,
    switch (effect)
    {
       case RETRO_RUMBLE_STRONG:
-         efx.leftright.large_magnitude = strength;
+         joypad->rumble_strong = strength;
          break;
       case RETRO_RUMBLE_WEAK:
-         efx.leftright.small_magnitude = strength;
+         joypad->rumble_weak = strength;
          break;
       default:
          return false;
    }
 
-#if SDL_SUPPORTS_RUMBLE
-   if (joypad->rumble_effect == -3)
-   {
-      if (SDL_JoystickRumble(joypad->joypad, efx.leftright.large_magnitude, efx.leftright.small_magnitude, efx.leftright.length) == -1)
+   /* Update the haptic effect with the current state of both rumble motors. */
+   efx.leftright.large_magnitude = joypad->rumble_strong;
+   efx.leftright.small_magnitude = joypad->rumble_weak;
+
+   #if SDL_SUPPORTS_RUMBLE
+      if (joypad->rumble_effect == -3)
       {
-         RARCH_WARN("[SDL] Failed to rumble joypad %u: %s.\n",
-                    pad, SDL_GetError());
-         joypad->rumble_effect = -2;
-         return false;
+         if (SDL_JoystickRumble(joypad->joypad,
+                  joypad->rumble_strong, joypad->rumble_weak,
+                  efx.leftright.length) == -1)
+         {
+            RARCH_WARN("[SDL] Failed to rumble joypad %u: %s.\n",
+                  pad, SDL_GetError());
+            joypad->rumble_effect = -2;
+            return false;
+         }
+
+         return true;
       }
-   }
-#endif
+   #endif
 
    if (!joypad->haptic)
       return false;
